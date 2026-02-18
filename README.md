@@ -38,12 +38,6 @@ The generated HTML file is **fully self-contained** — no server, no build step
 - **Live JSON sync** — the JSON panel updates in real-time as you rearrange elements
 - **Edit tracking** — an "Edited" badge appears when you've made changes
 
-### JSON Panel
-
-- **Collapsible side panel** — toggle with the sidebar icon in the toolbar
-- **Syntax highlighting** — keys, strings, numbers, and booleans are color-coded
-- **Panel state persists** — collapse/expand state saved to localStorage across sessions
-
 ### Export Options
 
 All export buttons are grouped in the JSON panel header:
@@ -128,12 +122,6 @@ JSONはこの問題を解決します。人間にも機械にも読み書きで�
 - **ドラッグ&ドロップ並べ替え** — 要素をドラッグしてコンテナの並べ替え
 - **JSONリアルタイム同期** — 要素の並べ替えに合わせてJSONパネルが即座に更新
 - **編集トラッキング** — 変更を加えると「Edited」バッジが表示
-
-### JSONパネル
-
-- **折りたたみ可能なサイドパネル** — ツールバーのサイドバーアイコンで切り替え
-- **シンタックスハイライト** — キー、文字列、数値、真偽値が色分け表示
-- **状態の永続化** — パネルの開閉状態はlocalStorageでセッション間保持
 
 ### エクスポート
 
