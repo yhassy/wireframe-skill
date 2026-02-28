@@ -303,20 +303,28 @@
 
   /* ── Grab bar for compound nodes ── */
   .wf-grab-bar {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 8px;
     height: 28px;
+    max-height: 100%;
+    overflow: hidden;
     padding: 0 var(--space-md);
     cursor: grab;
     font-size: var(--font-sm);
     font-weight: 500;
     color: var(--text-tertiary);
-    background: var(--bg-panel);
+    background: rgba(250, 250, 250, 0.92);
     border-bottom: 1px solid var(--border-light);
-    flex-shrink: 0;
-    align-self: stretch;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
     user-select: none;
+  }
+  .wf-node:hover:not(:has(.wf-node:hover)) > .wf-grab-bar {
+    display: flex;
   }
   .wf-grab-bar:hover {
     background: var(--bg-subtle);
@@ -839,7 +847,7 @@ function renderNode(node, container, path) {
     el.dataset.path = path;
     el.draggable = false;
     if (node.width) el.style.width = typeof node.width === 'number' ? `${node.width}px` : node.width;
-    if (node.height) el.style.height = `${node.height + 28}px`;
+    if (node.height) el.style.height = `${node.height}px`;
     if (node.maxWidth) el.style.maxWidth = `${node.maxWidth}px`;
 
     // Grab bar (compound node)
@@ -901,8 +909,7 @@ function renderNode(node, container, path) {
   // Sizing
   if (node.width) el.style.width = typeof node.width === 'number' ? `${node.width}px` : node.width;
   if (node.height) {
-    const grabBarH = hasChildren ? 28 : 0;
-    el.style.height = `${node.height + grabBarH}px`;
+    el.style.height = `${node.height}px`;
   }
   if (node.maxWidth) el.style.maxWidth = `${node.maxWidth}px`;
 

@@ -198,7 +198,36 @@ Tables use `columns` and `rows` instead of `children`:
 }
 ```
 
-**Canonical schema:** This JSON schema is the canonical layout format used across the pipeline. The `## Layout & Hierarchy` section in UI prompt files (`prompts/*.md`) uses this same schema inline. Skills that generate prompts (`/ui-prompts`, `/style-exploration`, `/figma-variation`) produce wireframe JSON. Skills that consume prompts (`/pencil-generate`, `/stitch-generate`) parse it directly.
+### Style properties (optional)
+
+Visual properties for downstream consumers. These are **purely additive** — a wireframe JSON with zero style properties is 100% valid and renders as a monochrome wireframe (current behavior, unchanged). The wireframe HTML renderer ignores style properties.
+
+The `/wireframe` skill itself produces plain wireframes. Style properties are added by `/ui-prompts` when a design system is specified, creating a "styled wireframe" that downstream consumers (pencil-generate, stitch-generate, Figma Make) use directly.
+
+| Field | Type | Description | Applies to |
+|-------|------|-------------|------------|
+| `fill` | string (hex) | Background fill color | Containers, cards, buttons |
+| `color` | string (hex) | Text/icon foreground color | Text, icons, links |
+| `fontSize` | number | Font size in px | Text |
+| `fontWeight` | number | Font weight (400, 600) | Text |
+| `borderRadius` | number | Corner radius in px | Containers, cards, buttons, inputs |
+| `stroke` | `{ color, width }` | Border definition | Containers, cards, inputs |
+| `shadow` | `{ x, y, blur, color }` | Drop shadow | Containers, cards |
+| `opacity` | number (0–1) | Element opacity | Any node |
+
+**Rules:**
+- Values MUST be resolved (hex colors, px numbers) — never token names
+- Absence means "use consumer defaults" — omit properties you don't need to specify
+- `fill` on a container = background; `color` on text = foreground (avoid ambiguity)
+- `stroke` and `shadow` use object notation for clean parsing
+
+**Annotation fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_solves` | string | Traces this element to a PRD problem or user need. Metadata only — ignored by all renderers. |
+
+**Canonical schema:** This JSON schema is the canonical layout format used across the pipeline. The `## Layout` section in UI prompt files (`prompts/*.md`) uses this same schema inline, optionally with style properties. Skills that generate prompts (`/ui-prompts`, `/style-exploration`, `/figma-variation`) produce wireframe JSON. Skills that consume prompts (`/pencil-generate`, `/stitch-generate`) parse it directly.
 
 ---
 
