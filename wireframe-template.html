@@ -578,32 +578,56 @@ function handleDragEnd(e) {
   dragPath = null;
 }
 
+function distToRect(x, y, rect) {
+  const dx = Math.max(rect.left - x, 0, x - rect.right);
+  const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function findClosestSibling(e) {
+  if (!dragPath) return null;
+
+  const parentPath = getParentPath(dragPath);
+  // Find the parent DOM element
+  let parentEl;
+  if (parentPath === null) {
+    // Dragged node is a root child — parent is the viewport
+    parentEl = document.getElementById('wf-root');
+  } else {
+    parentEl = document.querySelector(`.wf-node[data-path="${parentPath}"]`);
+  }
+  if (!parentEl) return null;
+
+  // Get direct child nodes with data-path (siblings of dragged node)
+  const siblings = parentEl.querySelectorAll(':scope > [data-path]');
+  let closest = null;
+  let closestDist = Infinity;
+
+  for (const sib of siblings) {
+    if (sib.dataset.path === dragPath) continue;
+    const rect = sib.getBoundingClientRect();
+    const dist = distToRect(e.clientX, e.clientY, rect);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = sib;
+    }
+  }
+
+  return closest;
+}
+
 function handleDragOver(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
 
   if (!dragPath) return;
 
-  const nodeEl = findDropTarget(e.target);
-  if (!nodeEl || !nodeEl.dataset.path) return;
+  const nodeEl = findClosestSibling(e);
+  if (!nodeEl) { removeDropIndicator(); return; }
 
   const targetPath = nodeEl.dataset.path;
-  const dragParent = getParentPath(dragPath);
-  const targetParent = getParentPath(targetPath);
+  if (targetPath === dragPath) { removeDropIndicator(); return; }
 
-  // Only allow reorder within same parent
-  if (dragParent !== targetParent) {
-    removeDropIndicator();
-    return;
-  }
-
-  // Don't drop on self
-  if (targetPath === dragPath) {
-    removeDropIndicator();
-    return;
-  }
-
-  const parentEl = nodeEl.parentElement;
   const parentNode = getNodeByPath(targetPath)?.parent;
   if (!parentNode) return;
 
@@ -618,8 +642,6 @@ function handleDragOver(e) {
   }
 
   showDropIndicator(nodeEl, isVertical, before);
-
-  // Store drop info on the element
   nodeEl._dropBefore = before;
 }
 
@@ -630,14 +652,10 @@ function handleDrop(e) {
   const sourcePath = e.dataTransfer.getData('text/plain');
   if (!sourcePath) return;
 
-  const nodeEl = findDropTarget(e.target);
-  if (!nodeEl || !nodeEl.dataset.path) return;
+  const nodeEl = findClosestSibling(e);
+  if (!nodeEl) return;
 
   const targetPath = nodeEl.dataset.path;
-  const sourceParent = getParentPath(sourcePath);
-  const targetParent = getParentPath(targetPath);
-
-  if (sourceParent !== targetParent) return;
   if (sourcePath === targetPath) return;
 
   const sourceInfo = getNodeByPath(sourcePath);
@@ -666,18 +684,6 @@ function handleDrop(e) {
   // Re-render
   render();
   updateJSONPanel();
-}
-
-function findDropTarget(el) {
-  // Walk up to find a draggable wf-node (not the root)
-  let current = el;
-  while (current && current !== document.body) {
-    if (current.classList?.contains('wf-node') && current.dataset.path) {
-      return current;
-    }
-    current = current.parentElement;
-  }
-  return null;
 }
 
 // ── Drop indicator ──
