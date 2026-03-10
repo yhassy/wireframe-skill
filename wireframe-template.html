@@ -1015,6 +1015,10 @@ function handleDelete() {
 }
 
 function handleKeyDown(e) {
+  // input/textarea/contenteditable にフォーカス中はブラウザのデフォルト動作を優先
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+
   // Delete/Backspace（修飾キーなし）
   if ((e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey && !e.ctrlKey) {
     if (selectedPath === null) return;
