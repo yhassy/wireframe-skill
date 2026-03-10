@@ -285,6 +285,10 @@
   .wf-drag-over { outline: 4px solid var(--drop-indicator) !important; outline-offset: -4px; background: rgba(41,179,241,0.06) !important; }
   .wf-drag-over > .wf-label { color: var(--drop-indicator) !important; }
 
+  /* 選択状態 */
+  .wf-selected { outline: 2px solid var(--accent) !important; outline-offset: -2px; background: rgba(74,144,217,0.06) !important; }
+  .wf-selected > .wf-label { color: var(--accent) !important; }
+
   /* ── Node name label ── */
   .wf-label {
     position: absolute;
@@ -323,7 +327,8 @@
     z-index: 10;
     user-select: none;
   }
-  .wf-node:hover:not(:has(.wf-node:hover)) > .wf-grab-bar {
+  .wf-node:hover:not(:has(.wf-node:hover)) > .wf-grab-bar,
+  #wf-root:hover:not(:has(.wf-node:hover)) > .wf-grab-bar {
     display: flex;
   }
   .wf-grab-bar:hover {
@@ -333,6 +338,46 @@
   .wf-grab-bar:active { cursor: grabbing; }
   .wf-grab-bar .wf-grip { font-size: 11px; letter-spacing: 1px; opacity: 0.5; }
   .wf-grab-bar:hover .wf-grip { opacity: 0.8; }
+
+  /* ── Grab bar hover trigger zone ──
+     コンテナ上端にinvisibleなhitゾーンを配置し、
+     子ノードのhoverをブロックしてgrab barへのマウス到達を確保する。
+     :hover時のみ有効にしてドラッグ操作への干渉を防ぐ */
+  .wf-node:has(> .wf-grab-bar)::after,
+  #wf-root:has(> .wf-grab-bar)::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    z-index: 9;
+    pointer-events: none;
+  }
+  .wf-node:hover:has(> .wf-grab-bar)::after,
+  #wf-root:hover:has(> .wf-grab-bar)::after {
+    pointer-events: auto;
+  }
+
+  /* ── Direction toggle button ── */
+  .wf-dir-toggle {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .wf-dir-toggle:hover {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
 
   /* ── Drop indicator ── */
   .wf-drop-indicator {
@@ -523,7 +568,54 @@ let dragPath = null;
 let dropIndicator = null;
 let fileHandle = null;
 let jsonPanelHidden = localStorage.getItem('wf-json-panel') === 'hidden';
+let selectedPath = null;
+let clipboardNode = null;
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 50;
 const originalFilename = (WIREFRAME_DATA?.name || 'wireframe').replace(/\s+/g, '-').toLowerCase() + '.wireframe.json';
+
+// ── Undo / Redo ──
+
+function saveSnapshot() {
+  undoStack.push(JSON.stringify(WIREFRAME_DATA.root));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  // 新しい操作が入ったらredo履歴をクリア
+  redoStack.length = 0;
+}
+
+function handleUndo() {
+  if (undoStack.length === 0) return;
+  // 現在の状態をredo stackに保存
+  redoStack.push(JSON.stringify(WIREFRAME_DATA.root));
+  WIREFRAME_DATA.root = JSON.parse(undoStack.pop());
+  selectedPath = null;
+
+  render();
+  updateJSONPanel();
+  showToast('Undo');
+
+  // undoで全て戻した場合はeditedバッジを消す
+  if (undoStack.length === 0) {
+    modified = false;
+    document.getElementById('wf-edited-badge').style.display = 'none';
+  }
+}
+
+function handleRedo() {
+  if (redoStack.length === 0) return;
+  // 現在の状態をundo stackに保存
+  undoStack.push(JSON.stringify(WIREFRAME_DATA.root));
+  WIREFRAME_DATA.root = JSON.parse(redoStack.pop());
+  selectedPath = null;
+
+  modified = true;
+  document.getElementById('wf-edited-badge').style.display = 'inline';
+
+  render();
+  updateJSONPanel();
+  showToast('Redo');
+}
 
 // ── JSON tree traversal ──
 
@@ -662,6 +754,7 @@ function handleDrop(e) {
   const targetInfo = getNodeByPath(targetPath);
   if (!sourceInfo || !targetInfo) return;
 
+  saveSnapshot();
   const parent = sourceInfo.parent;
   const sourceIdx = sourceInfo.index;
   const before = nodeEl._dropBefore;
@@ -680,6 +773,9 @@ function handleDrop(e) {
   // Mark as modified
   modified = true;
   document.getElementById('wf-edited-badge').style.display = 'inline';
+
+  // 並べ替え後はpathが変わるので選択をリセット
+  selectedPath = null;
 
   // Re-render
   render();
@@ -815,9 +911,152 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove('show'), 2500);
 }
 
+// ── Direction Toggle ──
+
+function toggleDirection(path) {
+  // pathがnullの場合はrootノード
+  let node;
+  if (path === null) {
+    node = WIREFRAME_DATA.root;
+  } else {
+    const info = getNodeByPath(path);
+    if (!info) return;
+    node = info.node;
+  }
+
+  saveSnapshot();
+  const current = node.direction || 'vertical';
+  node.direction = current === 'vertical' ? 'horizontal' : 'vertical';
+
+  modified = true;
+  document.getElementById('wf-edited-badge').style.display = 'inline';
+
+  render();
+  updateJSONPanel();
+  showToast(`${node.name}: ${node.direction}`);
+}
+
+// ── Selection & Copy/Paste ──
+
+function selectNode(path) {
+  // 同じノードをクリックしたら選択解除
+  if (selectedPath === path) {
+    selectedPath = null;
+  } else {
+    selectedPath = path;
+  }
+  updateSelection();
+}
+
+function updateSelection() {
+  document.querySelectorAll('.wf-selected').forEach(el => el.classList.remove('wf-selected'));
+  if (selectedPath !== null) {
+    const el = document.querySelector(`[data-path="${selectedPath}"]`);
+    if (el) el.classList.add('wf-selected');
+  }
+}
+
+// ノードのディープコピー（nameに " (copy)" を付与）
+function deepCopyNode(node) {
+  const copy = JSON.parse(JSON.stringify(node));
+  copy.name = (copy.name || '') + ' (copy)';
+  return copy;
+}
+
+function handleCopy() {
+  if (selectedPath === null) return;
+  const info = getNodeByPath(selectedPath);
+  if (!info) return;
+  clipboardNode = JSON.parse(JSON.stringify(info.node));
+  showToast(`Copied: ${clipboardNode.name}`);
+}
+
+function handlePaste() {
+  if (!clipboardNode || selectedPath === null) return;
+  const info = getNodeByPath(selectedPath);
+  if (!info) return;
+
+  saveSnapshot();
+  const copy = deepCopyNode(clipboardNode);
+  // 選択中の要素の直後に挿入
+  info.parent.children.splice(info.index + 1, 0, copy);
+
+  modified = true;
+  document.getElementById('wf-edited-badge').style.display = 'inline';
+
+  // ペースト先を選択状態にする
+  const parts = selectedPath.split('.');
+  parts[parts.length - 1] = String(info.index + 1);
+  selectedPath = parts.join('.');
+
+  render();
+  updateSelection();
+  updateJSONPanel();
+  showToast(`Pasted: ${copy.name}`);
+}
+
+function handleDelete() {
+  if (selectedPath === null) return;
+  const info = getNodeByPath(selectedPath);
+  if (!info) return;
+
+  saveSnapshot();
+  const name = info.node.name || '';
+  info.parent.children.splice(info.index, 1);
+
+  modified = true;
+  document.getElementById('wf-edited-badge').style.display = 'inline';
+
+  selectedPath = null;
+
+  render();
+  updateJSONPanel();
+  showToast(`Deleted: ${name}`);
+}
+
+function handleKeyDown(e) {
+  // Delete/Backspace（修飾キーなし）
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey && !e.ctrlKey) {
+    if (selectedPath === null) return;
+    handleDelete();
+    e.preventDefault();
+    return;
+  }
+
+  const isMeta = e.metaKey || e.ctrlKey;
+  if (!isMeta) return;
+
+  if (e.key === 'z' && e.shiftKey) {
+    handleRedo();
+    e.preventDefault();
+  } else if (e.key === 'z') {
+    handleUndo();
+    e.preventDefault();
+  } else if (e.key === 'c') {
+    // JSONパネルのテキスト選択中はブラウザのコピーを優先
+    if (window.getSelection()?.toString()) return;
+    handleCopy();
+    e.preventDefault();
+  } else if (e.key === 'v') {
+    handlePaste();
+    e.preventDefault();
+  }
+}
+
+function handleNodeClick(e) {
+  // direction toggleやgrab bar内のボタンクリックは無視
+  if (e.target.closest('.wf-dir-toggle') || e.target.closest('button')) return;
+
+  const nodeEl = e.target.closest('[data-path]');
+  if (!nodeEl) return;
+
+  e.stopPropagation();
+  selectNode(nodeEl.dataset.path);
+}
+
 // ── Render ──
 
-function createGrabBar(name) {
+function createGrabBar(name, path, direction) {
   const bar = document.createElement('div');
   bar.className = 'wf-grab-bar';
   bar.draggable = true;
@@ -828,6 +1067,24 @@ function createGrabBar(name) {
   const label = document.createElement('span');
   label.textContent = name;
   bar.appendChild(label);
+
+  // direction切り替えボタン（childrenを持つコンテナのみ）
+  if (direction) {
+    const toggle = document.createElement('button');
+    toggle.className = 'wf-dir-toggle';
+    toggle.title = direction === 'vertical' ? 'Switch to horizontal' : 'Switch to vertical';
+    toggle.textContent = direction === 'vertical' ? '↕' : '↔';
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleDirection(path);
+    });
+    // ドラッグ開始を抑止
+    toggle.addEventListener('mousedown', (e) => e.stopPropagation());
+    toggle.draggable = false;
+    bar.appendChild(toggle);
+  }
+
   return bar;
 }
 
@@ -857,7 +1114,7 @@ function renderNode(node, container, path) {
     if (node.maxWidth) el.style.maxWidth = `${node.maxWidth}px`;
 
     // Grab bar (compound node)
-    el.appendChild(createGrabBar(node.name || 'Table'));
+    el.appendChild(createGrabBar(node.name || 'Table', path, null));
 
     // Header row
     const header = document.createElement('div');
@@ -935,7 +1192,7 @@ function renderNode(node, container, path) {
 
   // Label / Grab bar
   if (hasChildren) {
-    el.appendChild(createGrabBar(node.name || ''));
+    el.appendChild(createGrabBar(node.name || '', path, dir));
   } else if (node.name && !node.type) {
     const label = document.createElement('span');
     label.className = 'wf-label';
@@ -999,6 +1256,7 @@ function render() {
     if (WIREFRAME_DATA.root.children) {
       // Apply root direction to viewport
       viewport.style.display = 'flex';
+      viewport.style.position = 'relative';
       const rootDir = WIREFRAME_DATA.root.direction || 'vertical';
       viewport.style.flexDirection = rootDir === 'horizontal' ? 'row' : 'column';
       if (WIREFRAME_DATA.root.gap) viewport.style.gap = `${WIREFRAME_DATA.root.gap}px`;
@@ -1010,11 +1268,17 @@ function render() {
       if (WIREFRAME_DATA.root.align) viewport.style.alignItems = WIREFRAME_DATA.root.align;
       if (WIREFRAME_DATA.root.wrap) viewport.style.flexWrap = 'wrap';
 
+      // rootノード用のgrab bar（direction切り替え用）
+      viewport.appendChild(createGrabBar(WIREFRAME_DATA.root.name || 'Root', null, rootDir));
+
       WIREFRAME_DATA.root.children.forEach((child, i) => {
         renderNode(child, viewport, `${i}`);
       });
     }
   }
+
+  // render後にDOM上の選択状態を再適用
+  updateSelection();
 }
 
 function init() {
@@ -1043,6 +1307,17 @@ function init() {
   viewport.addEventListener('dragend', handleDragEnd);
   viewport.addEventListener('dragover', handleDragOver);
   viewport.addEventListener('drop', handleDrop);
+
+  // 選択とコピー&ペースト
+  viewport.addEventListener('click', handleNodeClick);
+  document.addEventListener('keydown', handleKeyDown);
+
+  // viewport外クリックで選択解除
+  document.getElementById('wf-viewport-wrap').addEventListener('click', (e) => {
+    if (e.target.closest('#wf-root [data-path]')) return;
+    selectedPath = null;
+    updateSelection();
+  });
 
   render();
   updateJSONPanel();
